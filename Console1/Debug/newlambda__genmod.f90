@@ -1,0 +1,9 @@
+        !COMPILER-GENERATED INTERFACE MODULE: Wed Feb 24 16:24:08 2016
+        MODULE NEWLAMBDA__genmod
+          INTERFACE 
+            FUNCTION NEWLAMBDA(X)
+              REAL(KIND=8) :: X
+              REAL(KIND=8) :: NEWLAMBDA
+            END FUNCTION NEWLAMBDA
+          END INTERFACE 
+        END MODULE NEWLAMBDA__genmod

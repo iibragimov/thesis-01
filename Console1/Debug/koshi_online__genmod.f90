@@ -1,0 +1,10 @@
+        !COMPILER-GENERATED INTERFACE MODULE: Wed Feb 24 16:25:37 2016
+        MODULE KOSHI_ONLINE__genmod
+          INTERFACE 
+            SUBROUTINE KOSHI_ONLINE(K,FLAG,Q)
+              INTEGER(KIND=4) :: K
+              INTEGER(KIND=4) :: FLAG
+              COMPLEX(KIND=8) :: Q
+            END SUBROUTINE KOSHI_ONLINE
+          END INTERFACE 
+        END MODULE KOSHI_ONLINE__genmod
