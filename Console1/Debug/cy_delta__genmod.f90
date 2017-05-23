@@ -1,7 +1,0 @@
-        !COMPILER-GENERATED INTERFACE MODULE: Sat Feb 18 13:28:28 2017
-        MODULE CY_DELTA__genmod
-          INTERFACE 
-            SUBROUTINE CY_DELTA
-            END SUBROUTINE CY_DELTA
-          END INTERFACE 
-        END MODULE CY_DELTA__genmod

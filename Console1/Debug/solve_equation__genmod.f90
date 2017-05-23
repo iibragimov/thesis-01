@@ -1,9 +1,0 @@
-        !COMPILER-GENERATED INTERFACE MODULE: Sat Feb 18 13:28:28 2017
-        MODULE SOLVE_EQUATION__genmod
-          INTERFACE 
-            SUBROUTINE SOLVE_EQUATION(X0,Y0)
-              REAL(KIND=8) :: X0
-              REAL(KIND=8) :: Y0
-            END SUBROUTINE SOLVE_EQUATION
-          END INTERFACE 
-        END MODULE SOLVE_EQUATION__genmod
