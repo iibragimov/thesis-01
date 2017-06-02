@@ -1,17 +1,4 @@
-﻿subroutine find_const
-use mod
-real(8) lam
-arg_C = (g_p - g_b) * delta / d2 - delta * pi - g_p
-mod_C = l_2 / (d2*d2) * dsin(g_p * d5)**(delta - 2) * dsin(g_b * d5)**(-delta)
-g_a = g_b + g_p - pi
-u_inf = mod_C * v_inf
-betta = alpha - arg_C
-gamma = d1 * 4 * pi * u_inf * dsin(betta)
-lam = l_2 / l_1
-Cy = d2 * pi * lam / (lam + d1) * dsin(pi * delta + g_p - (g_p - g_b) * d5 * delta + alpha) / dsin(g_p * d5)**(2 - delta) / dsin(g_b * d5)**delta
-end subroutine
-
-function f1(x, y)
+﻿function f1(x, y)
 ! первая функция, для нахождения g_p -> x, g_b -> y
 use mod 
 real(8) f1, x, y
@@ -65,7 +52,7 @@ end if
 end subroutine
 
 subroutine solve_equation(x0, y0) !(f1, f2, df1_dx, df1_dy, df2_dx, df2_dy, x0, y0)
-! метод Ньютона
+! метод Ньютона (находит g_b, g_p)
 use mod 
 external f1, f2, df1_dx, df1_dy, df2_dx, df2_dy
 real(8) f1, f2, df1_dx, df1_dy, df2_dx, df2_dy, x0, y0, a, b, c, d, opr, eps
@@ -87,27 +74,58 @@ g_p = x0
 g_b = y0
 end subroutine
 
-function z(x)
+subroutine find_const
+!нахождение основных параметров и констант задачи
 use mod
-real(8) x, sgn 
-complex(8) z, C
+real(8) a, b, lam
+!Начальное приближение
+a = pi / 3
+b = pi * 3 / 4 
+!Нахождение g_b, g_p
+call solve_equation(b * d2, a * d2)
+
+arg_C = (g_p - g_b) * delta / d2 - delta * pi - g_p
+mod_C = l_2 / (d2*d2) * dsin(g_p * d5)**(delta - 2) * dsin(g_b * d5)**(-delta)
+g_a = g_b + g_p - pi
+u_inf = mod_C * v_inf
+betta = alpha - arg_C
+g_o = d2 * betta - 3 * pi !?
+!g_o = d2 * betta + pi !-4*pi
+gamma = d1 * 4 * pi * u_inf * dsin(betta)
+lam = l_2 / l_1
+Cy = d2 * pi * lam / (lam + d1) * dsin(pi * delta + g_p - (g_p - g_b) * d5 * delta + alpha) / dsin(g_p * d5)**(2 - delta) / dsin(g_b * d5)**delta
+end subroutine
+
+function z(zz)
+!z -- отображает ед. окружность в многоугольник
+!zz -- компл переменная \zeta
+use mod
+real(8) sgn !, x 
+complex(8) z, zz, C 
 C = (mod_C * cdexp(arg_C * ii)) 
-z = C * cdexp(ii * (x + g_p + pi * sgn(x - g_p)) / d2 * (d2 - delta)) * dabs(d2 * dsin((x - g_p) / d2))**(d2 - delta) * cdexp(ii * (x + g_b + pi * sgn(x - g_b)) / d2 * delta) * dabs(d2 * dsin((x - g_b) / d2))**delta * cdexp(-ii * x)
+!вариант с выбором ветвей
+!z = C * cdexp(ii * (x + g_p + pi * sgn(x - g_p)) / d2 * (d2 - delta)) * dabs(d2 * dsin((x - g_p) / d2))**(d2 - delta) * cdexp(ii * (x + g_b + pi * sgn(x - g_b)) / d2 * delta) * dabs(d2 * dsin((x - g_b) / d2))**delta * cdexp(-ii * x)
+!тупой вариант
+!z = C * (zz - cdexp(ii * g_p))**(d2 - delta) * (zz - cdexp(ii * g_b))**(delta) * zz**(-d1)
+!исправил, чтобы не было скачков
+z = C * (zz - cdexp(ii * g_p))**(d2) * ((zz - cdexp(ii * g_b)) / (zz - cdexp(ii * g_p)))**(delta) * zz**(-d1)
 end function
 
 subroutine forma_plastinki
 ! записывает в файл форму пластинки
+! Нужно еще разбить вычисление так чтобы все крайние и угловые точки входили g_a, g_b, g_p и т.д.
 use mod
 integer(4) i
 complex(8) z, t 
-OPEN (1,FILE = 'forma.dat') 
-write(1,*) ' VARIABLES = "X", "Y" '
+OPEN (port, FILE = 'data/forma.dat') 
+write(port, *) ' VARIABLES = "X", "Y" '
 do i = 1, n
-    t = z((i - 1) * d2 * pi / (n - 1))
+    t = z(cdexp(ii * (i - 1) * d2 * pi / (n - 1)))
     tt(i) = t
-    write(1,"(F12.5,' ', F12.5)") dreal(t), dimag(t)
+    write(port, "(F12.5,' ', F12.5)") dreal(t), dimag(t)
 end do
-close(1)
+close(port)
+port = port + 1
 end subroutine 
 
 function v_g(x)
@@ -128,14 +146,15 @@ do i = 2, n
     sg(i) = sg(i-1) + cdabs(tt(i) - tt(i-1))
 end do
 print *, sg(n)
-OPEN (3,FILE = 'vs.dat') 
-write(3,*) ' VARIABLES = "X", "Y" '
+OPEN (port, FILE = 'data/vs.dat') 
+write(port, *) ' VARIABLES = "X", "Y" '
 do i = 1, n
     !gj = (i - 1) * d2 * pi / (n - 1)
     gj = d2 * pi - (i - 1) * d2 * pi / (n - 1) 
-    write(3,"(F12.5,' ', F12.5)") sg(i), v_g(gj)
+    write(port, "(F12.5,' ', F12.5)") sg(i), v_g(gj)
 end do
-close(3)
+close(port)
+port = port + 1
 end subroutine
 
 subroutine Cy_delta
@@ -144,49 +163,64 @@ use mod
 integer(4) i, k
 k = 21
 alpha = pi / 18 
-OPEN (2,FILE = 'cy.dat') 
+OPEN (port, FILE = 'data/cy.dat') 
 
 l_2 = 0.10d0
-write(2,*) ' VARIABLES = "X", "Y" '
-write(2,*) 'ZONE T = "l2 = ', l_2, '", I = ',k ,', F=POINT'
+write(port, *) ' VARIABLES = "X", "Y" '
+write(port, *) 'ZONE T = "l2 = ', l_2, '", I = ',k ,', F=POINT'
 do i = 1, k
     delta = d1 + d5 * (i - 1) / (k - 1) 
     a = pi / 3
     b = pi * 3 / 4 
     call solve_equation(b * d2, a * d2)
     call find_const
-    write(2,"(F12.5,' ', F12.5)") delta, Cy     
+    write(port, "(F12.5,' ', F12.5)") delta, Cy     
 end do
 
 l_2 = 0.20d0
-write(2,*) ' VARIABLES = "X", "Y" '
-write(2,*) 'ZONE T = "l2 = ', l_2, '", I = ',k ,', F=POINT'
+write(port, *) ' VARIABLES = "X", "Y" '
+write(port, *) 'ZONE T = "l2 = ', l_2, '", I = ',k ,', F=POINT'
 do i = 1, k
     delta = d1 + d5 * (i - 1) / (k - 1) 
     a = pi / 3
     b = pi * 3 / 4 
     call solve_equation(b * d2, a * d2)
     call find_const
-    write(2,"(F12.5,' ', F12.5)") delta, Cy     
+    write(port, "(F12.5,' ', F12.5)") delta, Cy     
 end do
 
 l_2 = d5
-write(2,*) ' VARIABLES = "X", "Y" '
-write(2,*) 'ZONE T = "l2 = ', l_2, '", I = ',k ,', F=POINT'
+write(port, *) ' VARIABLES = "X", "Y" '
+write(port, *) 'ZONE T = "l2 = ', l_2, '", I = ',k ,', F=POINT'
 do i = 1, k
     delta = d1 + d5 * (i - 1) / (k - 1) 
     a = pi / 3
     b = pi * 3 / 4 
     call solve_equation(b * d2, a * d2)
     call find_const
-    write(2,"(F12.5,' ', F12.5)") delta, Cy     
+    write(port, "(F12.5,' ', F12.5)") delta, Cy     
 end do
 
-close(2)
+close(port)
+port = port + 1 
 end subroutine
 
+subroutine solve(x, y, z)
+!главный решатель
+!x -- delta угол закрылка
+!y -- alpha угол атаки
+!z -- l_2 длина закрылка
+use mod 
+real(8) x, y, z
+    delta = x
+    alpha = y
+    l_2 = z
+    call find_const
+    call forma_plastinki
+    call v_s
+end subroutine 
 
-!===========================< * >===================================!
+!==============< Вспомогательные функции >===============!
 
 function sred(x1,x2)
 !среднее арифметическое
@@ -213,17 +247,170 @@ else
 end if 
 end function
 
-subroutine solve(x, y, z)
+!=============< Построение линий тока >==================!
+!Подключить файлы func.f90, lines_func.f90, lines_mod.f90
+!Подготовить 2 функции dz_d\zeta и dw_d\zeta
+!Подготовить 2 функции для остановки итерационного процесса
+!Записать отдельной зоной в файл саму пластинкув виде 3х точекч
+
+function dw_dzeta(zz)
+!нахождение функции dw_d\zeta
+!zz -- \zeta комплексная переменная
+!разделил, чтоб не таким длинным было выражение
+use mod
+complex(8) zz, dw_dzeta
+complex(8) first, second, third
+first = u_inf * cdexp(-ii * betta)
+second = u_inf * cdexp(ii * betta) / zz / zz
+third = gamma / (d2 * pi * ii * zz)
+dw_dzeta = first - second - third
+end function 
+
+function dw_dz(zz)
+!комплексно-сопряженная скорость dw_d\zeta
+use mod
+complex(8) dw_dzeta, dz_dzeta, dw_dz, zz
+dw_dz = dw_dzeta(zz) / dz_dzeta(zz)
+end function 
+
+function dz_dzeta(zz)
+!нахождение функции dz_d\zeta, поынтегральная функция
+!разделил на скобки, чтоб не запупаться
+!zz -- \zeta комплексная переменная
+use mod
+complex(8) zz, dz_dzeta
+complex(8) C, zz_a, zz_p, zz_b, zz_c1
+zz_a = (zz - cdexp(ii * g_a))               ! (zeta - zeta_a)
+zz_p = (zz - cdexp(ii * g_p))**(d1 - delta) ! (zeta - zeta_p)^(1 - delta)
+zz_b = (zz - cdexp(ii * g_b))**(delta - d1) ! (zeta - zeta_b)^(delta - 1)
+zz_c1 = (zz - c1)                           ! (zeta - c1)
+C = mod_C * cdexp(ii * arg_C)               ! комплексная константа
+
+dz_dzeta = C * zz_a * zz_c1 * zz_p * zz_b / zz / zz
+end function 
+
+function lines_test_stop(z,zz)
+!условие остановки при построении линии тока
+!z -- что такое?
+!zz -- ?
+use mod
+complex(8) z,zz
+logical lines_test_stop
+lines_test_stop = dreal(zz) > 1.5d0
+end
+
+function lines_test_stop2(z,zz)
+!условие остановки при построении линии тока
+!z -- ?
+!zz -- ?
+use mod
+complex(8) z,zz
+logical lines_test_stop2
+lines_test_stop2 = dreal(zz) > 3.5d0
+end
+
+subroutine save_line(k, zl, zone_name, zone_name_n)
+!запись в файл линии тока по зонам
+!k -- кол-во точек линии тока
+!zl -- zl(0:nmax) комплексный массив линии тока
+!zone_name -- название зоны
+!zone_name_n -- ?
 use mod 
-real(8) a, b, x, y, z
-    delta = x
-    alpha = y
-    l_2 = z
-    a = pi / 3
-    b = pi * 3 / 4 
-    call solve_equation(b * d2, a * d2)
-    call find_const
-    call forma_plastinki
-    call v_s
+integer(4) i, k, zone_name_n
+character(8) zone_name
+complex(8) zl(0:nmax)
+write(port, "('ZONE T=""', A5, i2, '"", I=', i4, ', F=POINT')") zone_name, zone_name_n, k+1
+do i = 0, k
+    write(port, "(F9.5, ' ', F9.5)") dreal(zl(i)), dimag(zl(i))
+enddo
 end subroutine 
-    
+
+subroutine save_plastin
+!вспомогательная процедура для сохранения пластинки в файл, можно посути всего лишь три точки задать
+!протестить оба варианта
+use mod
+integer(4) i
+character(8) zone_name
+complex(8) z, t 
+zone_name = 'plastina'
+!первый вариант
+!write(port, "('ZONE T=""', A5, i2, '"", I=', i4, ', F=POINT')") zone_name, 34, n+1
+!do i = 1, n
+!    t = z((i - 1) * d2 * pi / (n - 1))
+!    tt(i) = t
+!    write(port, "(F9.5, ' ', F9.5)") dreal(t), dimag(t)
+!end do
+!второй вариант, 34 ая линия, 3 точек видимо
+write(port, "('ZONE T=""', A5, i2, '"", I=', i4, ', F=POINT')") zone_name, 34, 3
+write(port, "(F9.5, ' ', F9.5)") dreal(z(cdexp(ii * g_a))), dimag(z(cdexp(ii * g_a)))
+write(port, "(F9.5, ' ', F9.5)") dreal(z(cdexp(ii * g_b))), dimag(z(cdexp(ii * g_b)))
+write(port, "(F9.5, ' ', F9.5)") dreal(z(c1)), dimag(z(c1))
+end subroutine 
+
+subroutine current_lines !(x, y, z)
+!построение линий тока
+!x -- delta угол закрылка
+!y -- alpha угол атаки
+!z -- l_2 длина закрылка
+use mod
+external dw_dzeta, lines_test_stop, lines_test_stop2
+logical lines_test_stop, lines_test_stop2
+character(8) zone_name !название зон линий, для записи в файл
+integer(4) i, k, zone_name_n, kol_lines
+real(8) dir0, dl, shag, dk
+complex(8) z0, zl(0:nmax), zz, dw_dzeta, z
+!Описание переменных
+!dw_dzeta -- dw_d\zeta 
+!lines_test_stop, lines_test_stop2 -- функции (условие) остановки итерационного процесса, задают границы линий тока
+!kol_lines -- количество линий тока
+!z0 -- начальная точка построения линии тока
+!dir0 -- начальное направление построения линии тока
+!dl -- ?
+!dk -- ?
+!zl(0:n) -- массив?
+!zone_name_k -- ?
+!zz -- ?
+
+!нахождение параметров/констант задачи
+!call find_const !возможно придется убрать и искать вне этой процедуры,тогда не нужно будет передавать xyz
+
+!инициализация параметров для нахождения линий тока
+call init_lines_const
+
+!TODO:
+!Нужно взять первую линию ту, которая врезается в пластинку и раздваивается.
+!чтобы ее найти нужно найти точку раветвления потока z0 в точке О и направление для интегрирования
+!Потом вызвать процедуру в противоположную сторону интегрирования
+!Но пока что мы не знаем в какой точке разветвляется поток
+!v(s) -- может оттуда можно найти z(zeta) известно и вообще все известно
+
+!Предполагаемо нашли точку разветвления потока
+z0 = z(cdexp(ii * g_o))
+dir0 = 3 * pi / d2
+call find_line(z0, dir0, -1, zl, k, nmax, dw_dzeta, lines_test_stop)
+zone_name = 'first'
+open(port, FILE='data/current_lines.dat')
+call save_line(k, zl, zone_name, 0)
+
+!kol = 31
+!dl = dimag(zl(k)) * d2 *5   ! dl - переименовать, чтоб было понятно
+!dk = dreal(zl(k))           ! dk - переименовать, и найти zl(k),т.к. нужно на что-то опираться.
+!shag = dl / (kol - 1)
+!do zone_name_n = 1, kol
+!    z0 = dk * c1 + ii * shag * zone_name_n
+!    dir0 = -zarg(dw_dzeta(z0)) !?? zarg()
+!    call find_line(z0, dir0, 1, zl, k, nmax, dw_dzeta, lines_test_stop2)
+!    zone_name = char(47 + zone_name_n)
+!    call save_line(k, zl, zone_name, zone_name_n)
+!end do
+!этот кусок рисует линию тока, которая от пластинки отходит
+!нужно его продумать, а еще добавить выдув струи по хорошему для второй задачи, а не для первой
+z0 = z(c1) !вроде задняя кромка закрылка
+dir0 = zarg(z0)!-zarg(dz_dzeta(z0)) !может стоит zarg(z0) взять, поток вроде как по направления закрылка стекает, понять нужно почему именно -zarg(dw_dzeta(z0))
+call find_line(z0, dir0, 1, zl, k, nmax, dw_dzeta, lines_test_stop2)
+zone_name = 'line' !char(47 + zone_name_n + 1)
+call save_line(k, zl, zone_name, 0) !zone_name_n)
+call save_plastin
+close(port)
+port = port + 1
+end subroutine 
