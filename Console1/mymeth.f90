@@ -250,7 +250,9 @@ end function
 !=============< Построение линий тока >==================!
 !Подключить файлы func.f90, lines_func.f90, lines_mod.f90
 !Подготовить 2 функции dz_d\zeta и dw_d\zeta
+!Так как функция dz_dzeta дает скачки, то попробуем мы используем функцию z(dw_dzeta(zeta))
 !Подготовить 2 функции для остановки итерационного процесса
+!Или написать универсальную функцию для lines_test_stop
 !Записать отдельной зоной в файл саму пластинкув виде 3х точекч
 
 function dw_dzeta(zz)
@@ -273,6 +275,7 @@ complex(8) dw_dzeta, dz_dzeta, dw_dz, zz
 dw_dz = dw_dzeta(zz) / dz_dzeta(zz)
 end function 
 
+!исправить, чтобы не было скачков
 function dz_dzeta(zz)
 !нахождение функции dz_d\zeta, поынтегральная функция
 !разделил на скобки, чтоб не запупаться
@@ -280,15 +283,21 @@ function dz_dzeta(zz)
 use mod
 complex(8) zz, dz_dzeta
 complex(8) C, zz_a, zz_p, zz_b, zz_c1
-zz_a = (zz - cdexp(ii * g_a))               ! (zeta - zeta_a)
-zz_p = (zz - cdexp(ii * g_p))**(d1 - delta) ! (zeta - zeta_p)^(1 - delta)
-zz_b = (zz - cdexp(ii * g_b))**(delta - d1) ! (zeta - zeta_b)^(delta - 1)
-zz_c1 = (zz - c1)                           ! (zeta - c1)
 C = mod_C * cdexp(ii * arg_C)               ! комплексная константа
+zz_a = (zz - cdexp(ii * g_a))               ! (zeta - zeta_a)
+zz_c1 = (zz - c1)                           ! (zeta - c1)
+zz_p = (zz - cdexp(ii * g_p))**(d1 - delta) ! (zeta - zeta_p)
+zz_b = (zz - cdexp(ii * g_b))**(delta - d1) ! (zeta - zeta_b)^(-1)
+dz_dzeta = C * zz_a * zz_c1 * zz_p * zz_b * zz**(-d2)
 
-dz_dzeta = C * zz_a * zz_c1 * zz_p * zz_b / zz / zz
+!zz_p = (zz - cdexp(ii * g_p))
+!zz_b = (zz - cdexp(ii * g_b)) 
+!zz_delta = ((zz - cdexp(ii * g_b)) / (zz - cdexp(ii * g_p)))**(delta) ! ((zeta - zeta_b) / (zeta - zeta_p))**(delta)
+!dz_dzeta = C * zz_a * zz_c1 * zz_p * zz_delta / zz_b / zz**(d2)
+!
 end function 
 
+!продумать нужно 
 function lines_test_stop(z,zz)
 !условие остановки при построении линии тока
 !z -- что такое?
@@ -296,7 +305,7 @@ function lines_test_stop(z,zz)
 use mod
 complex(8) z,zz
 logical lines_test_stop
-lines_test_stop = dreal(zz) > 1.5d0
+lines_test_stop = .FALSE. !(dreal(zz) > 4.0d0) ! .OR. (cdabs(z) > 20.0d0) 
 end
 
 function lines_test_stop2(z,zz)
@@ -306,10 +315,10 @@ function lines_test_stop2(z,zz)
 use mod
 complex(8) z,zz
 logical lines_test_stop2
-lines_test_stop2 = dreal(zz) > 3.5d0
+lines_test_stop2 = (dreal(zz) > 4.0d0) ! .OR. (cdabs(z) > 20.0)
 end
 
-subroutine save_line(k, zl, zone_name, zone_name_n)
+subroutine save_line(k, array, zone_name, zone_name_n)
 !запись в файл линии тока по зонам
 !k -- кол-во точек линии тока
 !zl -- zl(0:nmax) комплексный массив линии тока
@@ -318,10 +327,10 @@ subroutine save_line(k, zl, zone_name, zone_name_n)
 use mod 
 integer(4) i, k, zone_name_n
 character(8) zone_name
-complex(8) zl(0:nmax)
+complex(8) array(0:nmax)
 write(port, "('ZONE T=""', A5, i2, '"", I=', i4, ', F=POINT')") zone_name, zone_name_n, k+1
 do i = 0, k
-    write(port, "(F9.5, ' ', F9.5)") dreal(zl(i)), dimag(zl(i))
+    write(port, "(F9.5, ' ', F9.5)") dreal(array(i)), dimag(array(i))
 enddo
 end subroutine 
 
@@ -353,21 +362,25 @@ subroutine current_lines !(x, y, z)
 !y -- alpha угол атаки
 !z -- l_2 длина закрылка
 use mod
-external dw_dzeta, lines_test_stop, lines_test_stop2
+external dz_dzeta, dw_dzeta, lines_test_stop, lines_test_stop2
 logical lines_test_stop, lines_test_stop2
 character(8) zone_name !название зон линий, для записи в файл
 integer(4) i, k, zone_name_n, kol_lines
 real(8) dir0, dl, shag, dk
-complex(8) z0, zl(0:nmax), zz, dw_dzeta, z
+complex(8) z0, zz0, zl(0:nmax), zlz(0:nmax), zz, z, dw_dzeta, dz_dzeta
 !Описание переменных
 !dw_dzeta -- dw_d\zeta 
+!dz_dzeta -- dz_d\zeta 
 !lines_test_stop, lines_test_stop2 -- функции (условие) остановки итерационного процесса, задают границы линий тока
 !kol_lines -- количество линий тока
-!z0 -- начальная точка построения линии тока
-!dir0 -- начальное направление построения линии тока
+!z0 -- начальная точка построения линии тока zeta
+!zz0 -- начальная точка построения линии тока в плосткости z
+!dir0 -- начальное направление построения линии тока в плосткости zeta
+!kdir - 1 - по потоку, -1 - против потока   
 !dl -- ?
 !dk -- ?
-!zl(0:n) -- массив?
+!zl - выходной массив точек в плоскости zeta
+!zlz - выходной массив точек в плоскости z
 !zone_name_k -- ?
 !zz -- ?
 
@@ -381,35 +394,64 @@ call init_lines_const
 !Нужно взять первую линию ту, которая врезается в пластинку и раздваивается.
 !чтобы ее найти нужно найти точку раветвления потока z0 в точке О и направление для интегрирования
 !Потом вызвать процедуру в противоположную сторону интегрирования
-!Но пока что мы не знаем в какой точке разветвляется поток
-!v(s) -- может оттуда можно найти z(zeta) известно и вообще все известно
+!нужно использовать find_lines2
+!написать lines_test_stop универсальный
+!отыскание 
 
 !Предполагаемо нашли точку разветвления потока
-z0 = z(cdexp(ii * g_o))
-dir0 = 3 * pi / d2
-call find_line(z0, dir0, -1, zl, k, nmax, dw_dzeta, lines_test_stop)
+z0 = cdexp(ii * g_o)
+zz0 = z(z0)
+dir0 = g_o
+call find_line2(z0, zz0, dir0, -1, zl, zlz, k, nmax, dw_dzeta, dz_dzeta, lines_test_stop)
 zone_name = 'first'
 open(port, FILE='data/current_lines.dat')
-call save_line(k, zl, zone_name, 0)
+!do i = 0, k
+!    zl(i) = z(zl(i))
+!end do
+call save_line(k, zlz, zone_name, 0)
 
 !kol = 31
-!dl = dimag(zl(k)) * d2 *5   ! dl - переименовать, чтоб было понятно
-!dk = dreal(zl(k))           ! dk - переименовать, и найти zl(k),т.к. нужно на что-то опираться.
+!dl = dimag(zlz(k)) * d2 *5   ! dl - переименовать, чтоб было понятно
+!dk = dreal(zlz(k))           ! dk - переименовать, и найти zlz(k),т.к. нужно на что-то опираться.
 !shag = dl / (kol - 1)
 !do zone_name_n = 1, kol
-!    z0 = dk * c1 + ii * shag * zone_name_n
-!    dir0 = -zarg(dw_dzeta(z0)) !?? zarg()
-!    call find_line(z0, dir0, 1, zl, k, nmax, dw_dzeta, lines_test_stop2)
+!    zz0 = dk * c1 + ii * shag * zone_name_n
+!    z0 = z(zz0)
+!    dir0 = -zarg(dw_dzeta(zz0)) !?? zarg()
+!    call find_line2(z0, zz0, dir0, 1, zl, zlz, k, nmax, dw_dzeta, dz_dzeta, lines_test_stop2)
 !    zone_name = char(47 + zone_name_n)
-!    call save_line(k, zl, zone_name, zone_name_n)
+!    call save_line(k, zlz, zone_name, zone_name_n)
 !end do
+
+z0 = zl(k) - ii * 0.02d0 !в плоскости zeta
+zz0 = z(z0)             !в плоскости z
+dir0 = -zarg(dw_dzeta(z0))
+call find_line2(z0, zz0, dir0, 1, zl, zlz, k, nmax, dw_dzeta, dz_dzeta, lines_test_stop2)
+zone_name = 'down' !char(47 + zone_name_n)
+call save_line(k, zlz, zone_name, zone_name_n)
+
+z0 = zl(0) + ii * 0.04d0 !в плоскости zeta
+zz0 = z(z0)             !в плоскости z
+dir0 = -zarg(dw_dzeta(z0))
+call find_line2(z0, zz0, dir0, 1, zl, zlz, k, nmax, dw_dzeta, dz_dzeta, lines_test_stop2)
+zone_name = 'down' !char(47 + zone_name_n)
+call save_line(k, zlz, zone_name, zone_name_n)
+
+z0 = zl(k) + ii * 1.0d0 !в плоскости zeta
+zz0 = z(z0)             !в плоскости z
+dir0 = -zarg(dw_dzeta(z0))
+call find_line2(z0, zz0, dir0, 1, zl, zlz, k, nmax, dw_dzeta, dz_dzeta, lines_test_stop2)
+zone_name = 'up' !char(47 + zone_name_n)
+call save_line(k, zlz, zone_name, zone_name_n)
+
 !этот кусок рисует линию тока, которая от пластинки отходит
 !нужно его продумать, а еще добавить выдув струи по хорошему для второй задачи, а не для первой
-z0 = z(c1) !вроде задняя кромка закрылка
-dir0 = zarg(z0)!-zarg(dz_dzeta(z0)) !может стоит zarg(z0) взять, поток вроде как по направления закрылка стекает, понять нужно почему именно -zarg(dw_dzeta(z0))
-call find_line(z0, dir0, 1, zl, k, nmax, dw_dzeta, lines_test_stop2)
+z0 = c1
+zz0 = z(c1) !вроде задняя кромка закрылка 
+dir0 = -zarg(dw_dzeta(z0)) !может стоит zarg(z0) взять, поток вроде как по направления закрылка стекает, понять нужно почему именно -zarg(dw_dzeta(z0))
+call find_line2(z0, zz0, dir0, 1, zl, zlz, k, nmax, dw_dzeta, dz_dzeta, lines_test_stop2)
 zone_name = 'line' !char(47 + zone_name_n + 1)
-call save_line(k, zl, zone_name, 0) !zone_name_n)
+call save_line(k, zlz, zone_name, 0) !zone_name_n)
 call save_plastin
 close(port)
 port = port + 1
