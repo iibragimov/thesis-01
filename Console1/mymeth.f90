@@ -297,13 +297,13 @@ end function
 !zz_b = (zz - cdexp(ii * g_b)) 
 !zz_delta = ((zz - cdexp(ii * g_b)) / (zz - cdexp(ii * g_p)))**(delta) ! ((zeta - zeta_b) / (zeta - zeta_p))**(delta)
 !dz_dzeta = C * zz_a * zz_c1 * zz_p * zz_delta / zz_b / zz**(d2)
-!
+
 
 !продумать нужно 
 function lines_test_stop_my(z,zz)
 !условие остановки при построении линии тока
-!z -- что такое?
-!zz -- ?
+!z -- точка в плоскости zeta
+!zz -- точка в плоскости z
 use mod
 complex(8) z,zz
 logical lines_test_stop_my
@@ -374,24 +374,25 @@ external dz_dzeta, dw_dzeta, lines_test_stop_my, lines_test_stop2_my
 logical lines_test_stop_my, lines_test_stop2_my
 character(8) zone_name !название зон линий, для записи в файл
 integer(4) i, k, zone_name_n, number_of_lines, port_z, port_zz
-real(8) dir0, dl, shag, dk
+real(8) dir0, dirz0, dl, shag, dk
 complex(8) z0, zz0, zl(0:nmax), zlz(0:nmax), z, dw_dzeta, dz_dzeta, temp_zl_k
 !Описание переменных
 !dw_dzeta -- dw_d\zeta 
 !dz_dzeta -- dz_d\zeta 
 !lines_test_stop, lines_test_stop2 -- функции (условие) остановки итерационного процесса, задают границы линий тока
 !kol_lines -- количество линий тока
-!z0 -- начальная точка построения линии тока zeta
+!z0 -- начальная точка построения линии тока zeta (перепутано)
 !zz0 -- начальная точка построения линии тока в плосткости z
 !dir0 -- начальное направление скорости линии тока в плосткости zeta dir0 = -zarg(dw_dzeta())
+!dirz0 -- начальное направление в плосткости z dir0 = -zarg(dz_dzeta())
 !kdir - 1 - по потоку, -1 - против потока   
 !upper_bound -- верхняя граница линий тока в плоскости zeta
 !lower_bound -- нижняя граница линий тока в плоскости zeta
 !zl - выходной массив точек в плоскости zeta
 !zlz - выходной массив точек в плоскости z
 !zone_name_n -- индекс линий тока, (чтоб в файле не путать)
-!z_port -- индекс для записи в файл линий тока в плоскости z
-!zz_port -- индекс для записи в файл линий тока в плоскости zeta 
+!port_ z -- индекс для записи в файл линий тока в плоскости z
+!port_zz -- индекс для записи в файл линий тока в плоскости zeta 
 
 !нахождение параметров/констант задачи
 !call find_const !возможно придется убрать и искать вне этой процедуры,тогда не нужно будет передавать xyz
@@ -415,7 +416,8 @@ open(port_zz, FILE='data/current_lines_zeta.dat')
 z0 = cdexp(ii * g_o)
 zz0 = z(z0)
 dir0 = g_o
-call find_line2(z0, zz0, dir0, -1, zl, zlz, k, nmax, dw_dzeta, dz_dzeta, lines_test_stop_my)
+dirz0 = 3 / d2 * pi
+call find_line2(z0, zz0, dir0, dirz0, -1, zl, zlz, k, nmax, dw_dzeta, dz_dzeta, lines_test_stop_my)
 zone_name = 'first'
 !do i = 0, k
 !    zl(i) = z(zl(i))
@@ -434,7 +436,8 @@ do zone_name_n = 1, number_of_lines + 5
     z0 = temp_zl_k * cdexp(-ii * shag * zone_name_n)    ! в плоскости zeta
     zz0 = z(z0)                                         ! в плоскости z
     dir0 = -zarg(dw_dzeta(z0))
-    call find_line2(z0, zz0, dir0, 1, zl, zlz, k, nmax, dw_dzeta, dz_dzeta, lines_test_stop2_my)
+    dirz0 = -zarg(dz_dzeta(z0))
+    call find_line2(z0, zz0, dir0, dirz0, 1, zl, zlz, k, nmax, dw_dzeta, dz_dzeta, lines_test_stop2_my)
     zone_name = char(47 + zone_name_n)
     call save_line(port_z, k, zlz, zone_name, zone_name_n)
     call save_line(port_zz, k, zl, zone_name, zone_name_n)    
@@ -444,7 +447,8 @@ do zone_name_n = 1, number_of_lines
     z0 = temp_zl_k * cdexp(ii * shag * zone_name_n)    ! в плоскости zeta
     zz0 = z(z0)                                         ! в плоскости z
     dir0 = -zarg(dw_dzeta(z0))
-    call find_line2(z0, zz0, dir0, 1, zl, zlz, k, nmax, dw_dzeta, dz_dzeta, lines_test_stop2_my)
+    dirz0 = -zarg(dz_dzeta(z0))    
+    call find_line2(z0, zz0, dir0, dirz0, 1, zl, zlz, k, nmax, dw_dzeta, dz_dzeta, lines_test_stop2_my)
     zone_name = char(47 + zone_name_n)
     call save_line(port_z, k, zlz, zone_name, zone_name_n)
     call save_line(port_zz, k, zl, zone_name, zone_name_n)    
@@ -454,9 +458,10 @@ end do
 !нужно его продумать, а еще добавить выдув струи по хорошему для второй задачи, а не для первой
 z0 = c1
 zz0 = z(c1) !вроде задняя кромка закрылка 
-dir0 = -zarg(dw_dzeta(z0)) !может стоит zarg(z0) взять, поток вроде как по направления закрылка стекает, понять нужно почему именно -zarg(dw_dzeta(z0))
-call find_line2(z0, zz0, dir0, 1, zl, zlz, k, nmax, dw_dzeta, dz_dzeta, lines_test_stop2_my)
-zone_name = 'line' !char(47 + zone_name_n + 1)
+dir0 = -zarg(dw_dzeta(z0)) !поток вроде как по направления закрылка стекает, понять нужно почему именно -zarg(dw_dzeta(z0))
+dirz0 = -zarg(dz_dzeta(z0))
+call find_line2(z0, zz0, dir0, dirz0, 1, zl, zlz, k, nmax, dw_dzeta, dz_dzeta, lines_test_stop2_my)
+zone_name = 'last_line'
 call save_line(port_z, k, zlz, zone_name, 0)
 call save_line(port_zz, k, zl, zone_name, 0)
 
