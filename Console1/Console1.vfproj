@@ -33,6 +33,7 @@
 		<File RelativePath=".\Console1.f90"/>
 		<File RelativePath=".\func.f90"/>
 		<File RelativePath=".\lines_func.f90"/>
-		<File RelativePath=".\mymeth.f90"/></Filter>
+		<File RelativePath=".\mymeth.f90"/>
+		<File RelativePath=".\test.f90"/></Filter>
 		<File RelativePath=".\ReadMe.txt"/></Files>
 	<Globals/></VisualStudioProject>
